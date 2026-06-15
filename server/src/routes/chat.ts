@@ -23,6 +23,25 @@ chatRouter.post('/chat', async (req, res) => {
     .filter((m: any) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string')
     .map((m: any) => ({ role: m.role, content: m.content }));
 
+  // Non-streaming JSON path — React Native's fetch can't read SSE bodies.
+  if (req.body?.stream === false) {
+    try {
+      const msg = await anthropic.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 400,
+        system: systemPrompt(deityId, language),
+        messages: cleaned,
+      });
+      const text = msg.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+      return res.json({ text });
+    } catch (err: any) {
+      return res.status(502).json({ error: err?.message ?? 'chat failed' });
+    }
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
