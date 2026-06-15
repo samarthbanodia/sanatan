@@ -13,6 +13,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  useAudioRecorder,
+  RecordingPresets,
+  setAudioModeAsync,
+  createAudioPlayer,
+  requestRecordingPermissionsAsync,
+} from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import ScreenBackground from '../components/ScreenBackground';
 import DivineOrb from '../components/DivineOrb';
 import PressableScale from '../components/PressableScale';
@@ -36,16 +44,18 @@ export default function ConversationScreen({ route, navigation }: RootScreenProp
   const insets = useSafeAreaInsets();
   const deity = deityById(route.params.deityId)!;
   const [language, setLanguage] = useState<ChatLanguage>('en');
-  const { turns, state, sendText } = useChatSession(deity, language);
+  const { turns, state, sendText, sendVoice } = useChatSession(deity, language);
   const [input, setInput] = useState('');
+  const [recording, setRecording] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [turns, state]);
 
-  const orbState = state === 'thinking' ? 'listening' : 'idle';
-  const status = state === 'thinking' ? 'Reflecting…' : 'Speak your heart';
+  const orbState = recording || state === 'thinking' ? 'listening' : 'idle';
+  const status = recording ? 'Listening…' : state === 'thinking' ? 'Reflecting…' : 'Speak your heart';
 
   const onSend = () => {
     const t = input.trim();
@@ -53,6 +63,46 @@ export default function ConversationScreen({ route, navigation }: RootScreenProp
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInput('');
     sendText(t);
+  };
+
+  const playBase64Wav = async (b64: string) => {
+    try {
+      const path = `${FileSystem.cacheDirectory}reply-${Date.now()}.wav`;
+      await FileSystem.writeAsStringAsync(path, b64, { encoding: FileSystem.EncodingType.Base64 });
+      const player = createAudioPlayer({ uri: path });
+      player.play();
+      setTimeout(() => {
+        try {
+          player.remove();
+        } catch {}
+      }, 90000);
+    } catch {}
+  };
+
+  const toggleRecord = async () => {
+    if (state === 'thinking') return;
+    if (recording) {
+      setRecording(false);
+      try {
+        await recorder.stop();
+        const uri = recorder.uri;
+        if (uri) {
+          const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+          const replyAudio = await sendVoice(b64, 'm4a');
+          if (replyAudio) playBase64Wav(replyAudio);
+        }
+      } catch {}
+    } else {
+      try {
+        const perm = await requestRecordingPermissionsAsync();
+        if (!perm.granted) return;
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+        setRecording(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch {}
+    }
   };
 
   return (
@@ -74,11 +124,7 @@ export default function ConversationScreen({ route, navigation }: RootScreenProp
         </View>
 
         {/* Language selector */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.langRow}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.langRow}>
           {LANGS.map((l) => {
             const on = l.code === language;
             return (
@@ -130,9 +176,20 @@ export default function ConversationScreen({ route, navigation }: RootScreenProp
           )}
         </ScrollView>
 
-        {/* Chat input */}
+        {/* Input dock: mic (push-to-talk) + text */}
         <View style={[styles.dock, { paddingBottom: insets.bottom + sp(2) }]}>
           <View style={styles.inputRow}>
+            <PressableScale haptic="none" onPress={toggleRecord} disabled={state === 'thinking'}>
+              <LinearGradient
+                colors={recording ? (['#FF5E3A', '#FF7A1A'] as const) : (['#1C1C1F', '#2A2A2E'] as const)}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.micBtn, recording && styles.micBtnOn]}
+              >
+                <Ionicons name={recording ? 'stop' : 'mic'} size={22} color={recording ? '#3A1205' : colors.gold} />
+              </LinearGradient>
+            </PressableScale>
+
             <TextInput
               value={input}
               onChangeText={setInput}
@@ -142,8 +199,9 @@ export default function ConversationScreen({ route, navigation }: RootScreenProp
               multiline
               onSubmitEditing={onSend}
               returnKeyType="send"
-              editable={state !== 'thinking'}
+              editable={state !== 'thinking' && !recording}
             />
+
             <PressableScale haptic="none" onPress={onSend} disabled={!input.trim() || state === 'thinking'}>
               <LinearGradient
                 colors={input.trim() && state !== 'thinking' ? (['#F6C84C', '#FF7A1A'] as const) : (['#2A2A2E', '#1C1C1F'] as const)}
@@ -155,6 +213,9 @@ export default function ConversationScreen({ route, navigation }: RootScreenProp
               </LinearGradient>
             </PressableScale>
           </View>
+          <Text className="font-body text-[11px] text-textLow mt-2 text-center">
+            {recording ? 'Tap to send your voice' : 'Tap the mic to speak, or type'}
+          </Text>
         </View>
       </KeyboardAvoidingView>
     </ScreenBackground>
@@ -209,6 +270,23 @@ const styles = StyleSheet.create({
 
   dock: { paddingHorizontal: sp(4), paddingTop: sp(2) },
   inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
+  micBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  micBtnOn: {
+    borderColor: colors.flame,
+    shadowColor: colors.glowSaffron,
+    shadowOpacity: 0.8,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
+  },
   input: {
     flex: 1,
     minHeight: 48,

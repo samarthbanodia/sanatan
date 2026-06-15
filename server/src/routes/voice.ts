@@ -13,11 +13,13 @@ type InMsg = { role: 'user' | 'assistant'; content: string };
 // Returns: { transcript, replyText, replyAudio (base64 wav) }
 //   1) Sarvam STT  2) Anthropic Haiku persona  3) Sarvam TTS
 voiceRouter.post('/voice', async (req, res) => {
-  const { deityId, language = 'en', audioBase64, messages = [] } = req.body ?? {};
+  const { deityId, language = 'en', audioBase64, audioFormat = 'wav', messages = [] } = req.body ?? {};
   if (!isDeityId(deityId)) return res.status(400).json({ error: 'invalid deityId' });
   if (!isLanguage(language)) return res.status(400).json({ error: 'invalid language' });
   if (typeof audioBase64 !== 'string' || !audioBase64) return res.status(400).json({ error: 'audioBase64 required' });
 
+  const fmt = audioFormat === 'm4a' ? 'm4a' : audioFormat === 'mp3' ? 'mp3' : 'wav';
+  const mime = fmt === 'm4a' ? 'audio/mp4' : fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav';
   const langCode = `${language}-IN`;
   try {
     // 1) Speech-to-text
@@ -25,7 +27,7 @@ voiceRouter.post('/voice', async (req, res) => {
     const form = new FormData();
     form.append('model', 'saarika:v2.5');
     form.append('language_code', langCode);
-    form.append('file', new Blob([audioBuf], { type: 'audio/wav' }), 'speech.wav');
+    form.append('file', new Blob([audioBuf], { type: mime }), `speech.${fmt}`);
     const sttRes = await fetch(`${SARVAM_BASE}/speech-to-text`, {
       method: 'POST',
       headers: { 'api-subscription-key': config.sarvamApiKey },

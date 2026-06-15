@@ -52,5 +52,43 @@ export function useChatSession(deity: Deity, language: ChatLanguage = 'en') {
     [turns, state, deity, language]
   );
 
-  return { turns, state, sendText };
+  // Push-to-talk: send recorded audio, append the transcript + reply, return reply audio (base64) to play.
+  const sendVoice = useCallback(
+    async (audioBase64: string, audioFormat: 'm4a' | 'wav' | 'mp3' = 'm4a'): Promise<string | null> => {
+      if (state === 'thinking') return null;
+      const n = counter.current++;
+      setState('thinking');
+      try {
+        const messages = turns
+          .filter((t) => t.id !== 'greeting')
+          .map((t) => ({ role: t.role === 'deity' ? 'assistant' : 'user', content: t.text }));
+
+        const res = await fetch(`${API_BASE}/voice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deityId: deity.id, language, audioBase64, audioFormat, messages }),
+        });
+        const data = await res.json();
+        const transcript = typeof data?.transcript === 'string' && data.transcript ? data.transcript : '🎙️…';
+        const reply = typeof data?.replyText === 'string' && data.replyText ? data.replyText : '…';
+        setTurns((t) => [
+          ...t,
+          { id: `vu${n}`, role: 'devotee', text: transcript },
+          { id: `vd${n}`, role: 'deity', text: reply },
+        ]);
+        return typeof data?.replyAudio === 'string' ? data.replyAudio : null;
+      } catch {
+        setTurns((t) => [
+          ...t,
+          { id: `ve${n}`, role: 'deity', text: 'I could not hear you just now — please try again.' },
+        ]);
+        return null;
+      } finally {
+        setState('idle');
+      }
+    },
+    [turns, state, deity, language]
+  );
+
+  return { turns, state, sendText, sendVoice };
 }

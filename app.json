@@ -30,7 +30,12 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Sanatan to use the microphone so you can speak with the deities."
+        }
+      ],
       "expo-font"
     ],
     "extra": {
