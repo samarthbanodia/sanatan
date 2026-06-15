@@ -1,0 +1,24 @@
+# Render blueprint. Connect this repo in Render → it picks up server/ as the root.
+# Set the secret env vars (ANTHROPIC_API_KEY, SARVAM_API_KEY, LIVEKIT_*) in the
+# Render dashboard — do NOT put secrets in this file.
+services:
+  - type: web
+    name: sanatan-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 8787
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
