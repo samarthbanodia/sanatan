@@ -22,7 +22,7 @@ import PressableScale from '../components/PressableScale';
 import { useParallaxScroll } from '../hooks/useParallaxScroll';
 import { colors, fonts, radii, sp } from '../theme/theme';
 import { deityById, tracks } from '../data/content';
-import { deityImage } from '../data/assets';
+import { deityImage, audioAsset } from '../data/assets';
 import type { AudioRendition } from '../data/taxonomy';
 import type { RootScreenProps } from '../navigation/types';
 
@@ -41,11 +41,14 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
   const renditions = track.audio ?? [];
   const variantFor = (r: AudioRendition) => renditions.find((a) => (a.rendition ?? 'majestic') === r);
   const showRenditionToggle = !!variantFor('majestic') && !!variantFor('basic');
-  const active = variantFor(rendition) ?? renditions.find((a) => a.url) ?? renditions[0];
-  const audioUrl = active?.url || null;
-  const hasAudio = !!audioUrl;
+  const active =
+    variantFor(rendition) ?? renditions.find((a) => audioAsset(a.ledgerId) || a.url) ?? renditions[0];
+  // Prefer a locally-bundled asset (dev), else the remote CDN url.
+  const localAsset = audioAsset(active?.ledgerId);
+  const source = localAsset ?? (active?.url ? { uri: active.url } : null);
+  const hasAudio = !!source;
 
-  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null, { updateInterval: 250 });
+  const player = useAudioPlayer(source, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
 
   // ── Playback controls ──
