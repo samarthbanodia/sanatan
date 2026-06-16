@@ -48,16 +48,6 @@ export const ledger: LicenseEntry[] = [
     notes: 'PLACEHOLDER — replace with the actual downloaded track + license id once acquired.',
   },
   {
-    id: 'lic-ai-gayatri-chant',
-    asset: 'Gayatri Mantra — chant loop',
-    source: 'Suno Pro',
-    licenseType: 'ai-generated',
-    attributionRequired: false,
-    allowedUse: { streaming: true, offline: true, redistribution: false },
-    expiresOn: null,
-    notes: 'PLACEHOLDER — AI-generated under a paid (commercial) subscription; QA pronunciation before use.',
-  },
-  {
     id: 'lic-pd-om-chant',
     asset: 'Om — ambient chant',
     source: 'archive.org (public domain)',
@@ -86,9 +76,29 @@ export const ledger: LicenseEntry[] = [
     attributionRequired: false,
     allowedUse: { streaming: true, offline: true, redistribution: false },
     expiresOn: null,
-    notes: 'PILOT — generated under paid (commercial) Suno; set acquiredOn + contractRef (Suno gen URL) once rendered + QA-passed.',
+    notes: 'Famous recorded bhajan — Suno flags it; LICENSED ROUTE later (royalty-free bed + own vocal). Not generated via Suno.',
   },
+
+  // ── Clean Suno mantra pilot — each track ships a majestic + basic rendition ──
+  ...sunoRendition('gayatri', 'Gayatri Mantra'),
+  ...sunoRendition('ganapati', 'Ganapati Mantra (Om Gam Ganapataye Namah)'),
+  ...sunoRendition('vasudeva', 'Vasudeva Mantra (Om Namo Bhagavate Vasudevaya)'),
 ];
+
+// Two ledger rows (majestic + basic) for one Suno-generated mantra. Fill acquiredOn +
+// contractRef (Suno generation URL) on each once the take is rendered and QA-passed.
+function sunoRendition(slug: string, asset: string): LicenseEntry[] {
+  return (['majestic', 'basic'] as const).map((r) => ({
+    id: `lic-ai-${slug}-${r}`,
+    asset: `${asset} — ${r} rendition`,
+    source: 'Suno Pro',
+    licenseType: 'ai-generated' as const,
+    attributionRequired: false,
+    allowedUse: { streaming: true, offline: true, redistribution: false },
+    expiresOn: null,
+    notes: 'PILOT — paid (commercial) Suno; set acquiredOn + contractRef (Suno gen URL) after render + pronunciation QA.',
+  }));
+}
 
 export const licenseFor = (id: string): LicenseEntry | undefined =>
   ledger.find((e) => e.id === id);

@@ -20,9 +20,10 @@ import GlassCard from '../components/GlassCard';
 import DeityArt from '../components/DeityArt';
 import PressableScale from '../components/PressableScale';
 import { useParallaxScroll } from '../hooks/useParallaxScroll';
-import { colors, radii, sp } from '../theme/theme';
+import { colors, fonts, radii, sp } from '../theme/theme';
 import { deityById, tracks } from '../data/content';
 import { deityImage } from '../data/assets';
+import type { AudioRendition } from '../data/taxonomy';
 import type { RootScreenProps } from '../navigation/types';
 
 // Real audio playback via expo-audio. Tracks whose `audio[].url` is still empty
@@ -34,8 +35,15 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
   const deity = deityById(track.deityId);
   const { scrollY, onScroll } = useParallaxScroll();
 
-  // First audio variant that actually has a url (instrumental/chant/etc.).
-  const audioUrl = track.audio?.find((a) => a.url)?.url ?? null;
+  // Each track can ship two renditions the listener switches between.
+  const [rendition, setRendition] = useState<AudioRendition>('majestic');
+  const renditions = track.audio ?? [];
+  const variantFor = (r: AudioRendition) => renditions.find((a) => (a.rendition ?? 'majestic') === r);
+  const showRenditionToggle = !!variantFor('majestic') && !!variantFor('basic');
+
+  // Selected rendition → fall back to whichever variant actually has a url.
+  const active = variantFor(rendition) ?? renditions.find((a) => a.url) ?? renditions[0];
+  const audioUrl = active?.url || null;
   const hasAudio = !!audioUrl;
 
   const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null, { updateInterval: 250 });
@@ -136,6 +144,27 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
 
       {/* Frosted player bar */}
       <GlassCard blur intensity={50} style={[styles.player, { paddingBottom: insets.bottom + sp(3) }]} radius={radii.xl}>
+        {showRenditionToggle && (
+          <View style={styles.segment}>
+            {(['majestic', 'basic'] as const).map((r) => {
+              const on = r === rendition;
+              return (
+                <Pressable
+                  key={r}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setRendition(r);
+                  }}
+                  style={[styles.segmentBtn, on && styles.segmentBtnOn]}
+                >
+                  <Text style={[styles.segmentText, on && styles.segmentTextOn]}>
+                    {r === 'majestic' ? 'Majestic' : 'Basic'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
         <Pressable onPress={onSeek} hitSlop={12} disabled={!hasAudio}>
           <View style={styles.progressTrack} onLayout={(e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width)}>
             <Animated.View style={[styles.progressFill, fillStyle]}>
@@ -228,6 +257,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: sp(5),
     paddingTop: sp(4),
   },
+  segment: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    backgroundColor: colors.glass,
+    borderRadius: radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorderSoft,
+    padding: 3,
+    marginBottom: sp(4),
+  },
+  segmentBtn: { paddingHorizontal: 18, paddingVertical: 6, borderRadius: radii.pill },
+  segmentBtnOn: { backgroundColor: 'rgba(246,200,76,0.14)' },
+  segmentText: { fontFamily: fonts.bodySemi, fontSize: 12, letterSpacing: 0.3, color: colors.textLow },
+  segmentTextOn: { color: colors.gold },
   progressTrack: {
     height: 5,
     borderRadius: 3,

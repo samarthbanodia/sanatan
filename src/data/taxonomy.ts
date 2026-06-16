@@ -115,10 +115,16 @@ export type TrackContent = {
 
 // A licensed audio rendition. `ledgerId` MUST point at a row in src/data/licensing.ts —
 // nothing plays without a license record.
+// `rendition` lets one track ship two takes the listener can switch between:
+//   majestic = rich, full instrumentation + chorus (default);  basic = simple, single
+//   voice, minimal accompaniment, slightly faster. Absent ⇒ treated as 'majestic'.
+export type AudioRendition = 'majestic' | 'basic';
+
 export type AudioVariant = {
   variant: 'traditional' | 'modern' | 'instrumental' | 'chant';
   url: string;
   ledgerId: string;
+  rendition?: AudioRendition;
   artist?: string;
   durationSec?: number;
 };
