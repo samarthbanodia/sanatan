@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { config, SARVAM_BASE } from '../config.js';
-import { isDeityId, isLanguage, systemPrompt, DeityId, Language } from '../personas.js';
+import { isDeityId, isLanguage, systemPrompt, voiceFor, DeityId, Language } from '../personas.js';
 
 const anthropic = new Anthropic();
 export const voiceRouter = Router();
@@ -22,11 +22,12 @@ voiceRouter.post('/voice', async (req, res) => {
   const mime = fmt === 'm4a' ? 'audio/mp4' : fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav';
   const langCode = `${language}-IN`;
   try {
-    // 1) Speech-to-text
+    // 1) Speech-to-text — auto-detect the spoken language so the devotee can speak
+    // any Indian language regardless of the UI's selected reply language.
     const audioBuf = Buffer.from(audioBase64, 'base64');
     const form = new FormData();
     form.append('model', 'saarika:v2.5');
-    form.append('language_code', langCode);
+    form.append('language_code', 'unknown');
     form.append('file', new Blob([audioBuf], { type: mime }), `speech.${fmt}`);
     const sttRes = await fetch(`${SARVAM_BASE}/speech-to-text`, {
       method: 'POST',
@@ -53,11 +54,19 @@ voiceRouter.post('/voice', async (req, res) => {
     const replyText =
       msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('') || '…';
 
-    // 3) Text-to-speech (deity voice)
+    // 3) Text-to-speech in the deity's own voice (distinct speaker + pitch/pace).
+    const voice = voiceFor(deityId as DeityId);
     const ttsRes = await fetch(`${SARVAM_BASE}/text-to-speech`, {
       method: 'POST',
       headers: { 'api-subscription-key': config.sarvamApiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: replyText, target_language_code: langCode, model: 'bulbul:v2', speaker: 'anushka' }),
+      body: JSON.stringify({
+        text: replyText,
+        target_language_code: langCode,
+        model: 'bulbul:v2',
+        speaker: voice.speaker,
+        pitch: voice.pitch,
+        pace: voice.pace,
+      }),
     });
     const tts: any = await ttsRes.json();
     const replyAudio: string | null = Array.isArray(tts?.audios) ? tts.audios[0] : null;

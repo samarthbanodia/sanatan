@@ -51,6 +51,29 @@ const PERSONAS: Record<DeityId, Persona> = {
   },
 };
 
+// ── Per-deity voice (Sarvam bulbul:v2) ──
+// bulbul:v2 has 7 voices — F: anushka, manisha, vidya, arya · M: abhilash, karun, hitesh.
+// pitch ∈ [-0.75, 0.75] (lower = deeper), pace ∈ [0.3, 3.0] (lower = slower).
+// Each deity gets a distinct timbre so the voice *matches* who is speaking.
+export type DeityVoice = { speaker: string; pitch: number; pace: number };
+
+const VOICES: Record<DeityId, DeityVoice> = {
+  // Warm, friendly, paternal — a little jolly.
+  ganesha: { speaker: 'abhilash', pitch: 0.05, pace: 1.0 },
+  // Youthful, playful, melodic.
+  krishna: { speaker: 'hitesh', pitch: 0.1, pace: 1.05 },
+  // Deep, slow, spacious — the ascetic stillness.
+  shiva: { speaker: 'karun', pitch: -0.35, pace: 0.84 },
+  // Strong, grounded, steady — devotion and courage.
+  hanuman: { speaker: 'abhilash', pitch: -0.12, pace: 0.92 },
+  // Fierce yet tender mother — strong, warm.
+  durga: { speaker: 'vidya', pitch: -0.08, pace: 0.96 },
+  // Serene, gentle, flowing grace.
+  lakshmi: { speaker: 'arya', pitch: 0.05, pace: 0.98 },
+};
+
+export const voiceFor = (deityId: DeityId): DeityVoice => VOICES[deityId];
+
 const SHARED_GUARDRAILS = `
 You are a devotional guide *inspired by the teachings* associated with this deity — a comforting companion for reflection. You are NOT literally a god, and you never claim divine authority, issue commands "as God", or promise miracles, specific outcomes, or guaranteed results.
 
