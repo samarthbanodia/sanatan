@@ -31,6 +31,7 @@ export type Track = {
   glyph: string;
   gradient: readonly string[];
   lyrics: string[]; // verse blocks (legacy display field; migrate into `content`)
+  timedLyrics?: { t: number; line: string }[]; // LRC-style timestamps for precise karaoke sync
 
   // ── Catalog extensions (optional → backward-compatible with the current UI) ──
   slug?: string;

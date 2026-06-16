@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,22 +26,21 @@ import { deityImage } from '../data/assets';
 import type { AudioRendition } from '../data/taxonomy';
 import type { RootScreenProps } from '../navigation/types';
 
-// Real audio playback via expo-audio. Tracks whose `audio[].url` is still empty
-// (catalog not yet sourced) render a tasteful "coming soon" player rather than
-// faking progress — the moment a CDN url is added, the player just works.
+const SPEEDS = [0.75, 1, 1.25, 1.5] as const;
+// Where the active lyric line should sit in the viewport when auto-scrolling.
+const LYRIC_CENTER = 240;
+
 export default function ContentDetailScreen({ route, navigation }: RootScreenProps<'ContentDetail'>) {
   const insets = useSafeAreaInsets();
   const track = tracks.find((t) => t.id === route.params.trackId) ?? tracks[0];
   const deity = deityById(track.deityId);
   const { scrollY, onScroll } = useParallaxScroll();
 
-  // Each track can ship two renditions the listener switches between.
+  // ── Renditions (majestic / basic) ──
   const [rendition, setRendition] = useState<AudioRendition>('majestic');
   const renditions = track.audio ?? [];
   const variantFor = (r: AudioRendition) => renditions.find((a) => (a.rendition ?? 'majestic') === r);
   const showRenditionToggle = !!variantFor('majestic') && !!variantFor('basic');
-
-  // Selected rendition → fall back to whichever variant actually has a url.
   const active = variantFor(rendition) ?? renditions.find((a) => a.url) ?? renditions[0];
   const audioUrl = active?.url || null;
   const hasAudio = !!audioUrl;
@@ -49,6 +48,9 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
   const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
 
+  // ── Playback controls ──
+  const [speedIdx, setSpeedIdx] = useState(1); // default 1×
+  const [loop, setLoop] = useState(false);
   const [trackWidth, setTrackWidth] = useState(0);
   const progressSV = useSharedValue(0);
 
@@ -56,22 +58,29 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
     setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: false }).catch(() => {});
   }, []);
 
+  // Re-apply rate/loop/pitch whenever the player (source) or settings change.
+  useEffect(() => {
+    if (!hasAudio) return;
+    try {
+      player.shouldCorrectPitch = true;
+      player.setPlaybackRate(SPEEDS[speedIdx]);
+      player.loop = loop;
+    } catch {}
+  }, [player, hasAudio, speedIdx, loop]);
+
   const duration = status.duration || dur(track.duration);
   const progress = duration > 0 ? Math.min(status.currentTime / duration, 1) : 0;
 
-  // Smoothly interpolate the fill between the player's 250ms status ticks.
   useEffect(() => {
     progressSV.value = withTiming(progress, { duration: 260 });
   }, [progress, progressSV]);
 
-  // Reset to the start once a track finishes so the next tap replays it.
   useEffect(() => {
-    if (status.didJustFinish) player.seekTo(0);
-  }, [status.didJustFinish, player]);
+    if (status.didJustFinish && !loop) player.seekTo(0);
+  }, [status.didJustFinish, loop, player]);
 
   const fillStyle = useAnimatedStyle(() => ({ width: `${progressSV.value * 100}%` }));
 
-  // Parallax: hero art rises and gently scales/fades as you scroll the lyrics.
   const heroStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: interpolate(scrollY.value, [-150, 0, 300], [-60, 0, 120]) },
@@ -80,20 +89,68 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
     opacity: interpolate(scrollY.value, [0, 260], [1, 0.15], { extrapolateRight: 'clamp' }),
   }));
 
+  // ── Live synced lyrics ──
+  // Flatten verse blocks to individual lines. `timedLyrics` (LRC-style) gives precise
+  // sync when present; otherwise lines are distributed evenly across the duration.
+  const lines = useMemo(
+    () => track.lyrics.flatMap((b) => b.split('\n')).map((s) => s.trim()).filter(Boolean),
+    [track]
+  );
+  const activeLine = useMemo(() => {
+    if (track.timedLyrics?.length) {
+      let idx = 0;
+      for (let i = 0; i < track.timedLyrics.length; i++) {
+        if (status.currentTime >= track.timedLyrics[i].t) idx = i;
+      }
+      return idx;
+    }
+    return lines.length ? Math.min(lines.length - 1, Math.floor(progress * lines.length)) : 0;
+  }, [track.timedLyrics, status.currentTime, progress, lines.length]);
+
+  const scrollRef = useRef<Animated.ScrollView>(null);
+  const lyricsTop = useRef(0);
+  const lineOffsets = useRef<number[]>([]);
+  const userScrolling = useRef(false);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-scroll to keep the active line centered while playing (unless the user is scrolling).
+  useEffect(() => {
+    if (!hasAudio || !status.playing || userScrolling.current) return;
+    const y = lyricsTop.current + (lineOffsets.current[activeLine] ?? 0) - LYRIC_CENTER;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+  }, [activeLine, hasAudio, status.playing]);
+
+  const onUserScrollBegin = () => {
+    userScrolling.current = true;
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+  };
+  const onUserScrollEnd = () => {
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    resumeTimer.current = setTimeout(() => {
+      userScrolling.current = false;
+    }, 4000);
+  };
+
+  // ── Control handlers ──
   const togglePlay = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!hasAudio) return;
     if (status.playing) player.pause();
     else player.play();
   };
-
+  const cycleSpeed = () => {
+    Haptics.selectionAsync();
+    setSpeedIdx((i) => (i + 1) % SPEEDS.length);
+  };
+  const toggleLoop = () => {
+    Haptics.selectionAsync();
+    setLoop((v) => !v);
+  };
   const skip = (seconds: number) => {
     if (!hasAudio) return;
     Haptics.selectionAsync();
-    const next = Math.max(0, Math.min(status.currentTime + seconds, duration));
-    player.seekTo(next);
+    player.seekTo(Math.max(0, Math.min(status.currentTime + seconds, duration)));
   };
-
   const onSeek = (e: { nativeEvent: { locationX: number } }) => {
     if (!hasAudio || trackWidth <= 0) return;
     Haptics.selectionAsync();
@@ -115,10 +172,14 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
       </View>
 
       <Animated.ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: sp(40) }}
+        onScrollBeginDrag={onUserScrollBegin}
+        onScrollEndDrag={onUserScrollEnd}
+        onMomentumScrollEnd={onUserScrollEnd}
+        contentContainerStyle={{ paddingBottom: sp(48) }}
       >
         <Animated.View style={[styles.heroArt, heroStyle]}>
           <DeityArt source={deityImage(track.deityId)} radius={90} style={styles.artCircle} />
@@ -131,13 +192,26 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
           </Text>
         </View>
 
-        {/* Lyrics */}
-        <View className="px-7 mt-8">
-          {track.lyrics.map((verse, i) => (
-            <Text key={i} className="font-body text-[18px] leading-[32px] text-textHi text-center mb-7">
-              {verse}
-            </Text>
-          ))}
+        {/* Live lyrics */}
+        <View
+          style={styles.lyrics}
+          onLayout={(e: LayoutChangeEvent) => {
+            lyricsTop.current = e.nativeEvent.layout.y;
+          }}
+        >
+          {lines.map((line, i) => {
+            const isActive = hasAudio && status.playing && i === activeLine;
+            return (
+              <View
+                key={i}
+                onLayout={(e: LayoutChangeEvent) => {
+                  lineOffsets.current[i] = e.nativeEvent.layout.y;
+                }}
+              >
+                <Text style={[styles.lyricLine, isActive && styles.lyricLineActive]}>{line}</Text>
+              </View>
+            );
+          })}
           <Text className="font-display text-[22px] text-gold text-center mt-2">॥ श्री ॥</Text>
         </View>
       </Animated.ScrollView>
@@ -165,6 +239,7 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
             })}
           </View>
         )}
+
         <Pressable onPress={onSeek} hitSlop={12} disabled={!hasAudio}>
           <View style={styles.progressTrack} onLayout={(e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width)}>
             <Animated.View style={[styles.progressFill, fillStyle]}>
@@ -177,35 +252,49 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
             </Animated.View>
           </View>
         </Pressable>
-        <View className="flex-row items-center justify-between mt-4">
-          <Text className="font-body text-[12px] text-textMid w-[70px]">
-            {hasAudio ? `${fmt(status.currentTime)} / ${fmt(duration)}` : track.duration}
+
+        <View className="flex-row items-center justify-between mt-3">
+          <Text className="font-body text-[12px] text-textMid">
+            {hasAudio ? fmt(status.currentTime) : '0:00'}
           </Text>
-          <View className="flex-row items-center gap-[22px]">
-            <Pressable onPress={() => skip(-15)} hitSlop={10} disabled={!hasAudio}>
-              <Ionicons name="play-back" size={22} color={hasAudio ? colors.textMid : colors.textLow} />
-            </Pressable>
-            <PressableScale haptic="none" onPress={togglePlay} style={styles.playMain}>
-              <LinearGradient
-                colors={hasAudio ? ['#F6C84C', '#FF7A1A'] : ['#2A2A2E', '#1C1C1F']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.playMainGrad}
-              >
-                <Ionicons
-                  name={status.playing ? 'pause' : 'play'}
-                  size={24}
-                  color={hasAudio ? '#3A1205' : colors.textMid}
-                  style={{ marginLeft: status.playing ? 0 : 2 }}
-                />
-              </LinearGradient>
-            </PressableScale>
-            <Pressable onPress={() => skip(15)} hitSlop={10} disabled={!hasAudio}>
-              <Ionicons name="play-forward" size={22} color={hasAudio ? colors.textMid : colors.textLow} />
-            </Pressable>
-          </View>
-          <Ionicons name="heart-outline" size={22} color={colors.textMid} style={styles.likeIcon} />
+          <Text className="font-body text-[12px] text-textLow">
+            {hasAudio ? fmt(duration) : track.duration}
+          </Text>
         </View>
+
+        {/* Transport: loop · −15 · play · +15 · speed */}
+        <View style={styles.controls}>
+          <Pressable onPress={toggleLoop} hitSlop={10} style={styles.ctrlSide}>
+            <Ionicons name="repeat" size={22} color={loop ? colors.gold : colors.textLow} />
+          </Pressable>
+          <Pressable onPress={() => skip(-15)} hitSlop={10} disabled={!hasAudio}>
+            <Ionicons name="play-back" size={24} color={hasAudio ? colors.textMid : colors.textLow} />
+          </Pressable>
+          <PressableScale haptic="none" onPress={togglePlay} style={styles.playMain}>
+            <LinearGradient
+              colors={hasAudio ? ['#F6C84C', '#FF7A1A'] : ['#2A2A2E', '#1C1C1F']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.playMainGrad}
+            >
+              <Ionicons
+                name={status.playing ? 'pause' : 'play'}
+                size={26}
+                color={hasAudio ? '#3A1205' : colors.textMid}
+                style={{ marginLeft: status.playing ? 0 : 2 }}
+              />
+            </LinearGradient>
+          </PressableScale>
+          <Pressable onPress={() => skip(15)} hitSlop={10} disabled={!hasAudio}>
+            <Ionicons name="play-forward" size={24} color={hasAudio ? colors.textMid : colors.textLow} />
+          </Pressable>
+          <Pressable onPress={cycleSpeed} hitSlop={10} style={styles.ctrlSide}>
+            <Text style={[styles.speedText, SPEEDS[speedIdx] !== 1 && styles.speedTextOn]}>
+              {SPEEDS[speedIdx]}×
+            </Text>
+          </Pressable>
+        </View>
+
         {!hasAudio && (
           <Text className="font-body text-[11px] text-textLow mt-3 text-center">Audio coming soon</Text>
         )}
@@ -249,6 +338,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 16,
   },
+
+  lyrics: { paddingHorizontal: sp(7), marginTop: sp(8) },
+  lyricLine: {
+    fontFamily: fonts.body,
+    fontSize: 18,
+    lineHeight: 32,
+    textAlign: 'center',
+    color: colors.textLow,
+    marginBottom: sp(5),
+  },
+  lyricLineActive: { color: colors.textHi, fontFamily: fonts.bodySemi },
+
   player: {
     position: 'absolute',
     left: sp(4),
@@ -271,6 +372,7 @@ const styles = StyleSheet.create({
   segmentBtnOn: { backgroundColor: 'rgba(246,200,76,0.14)' },
   segmentText: { fontFamily: fonts.bodySemi, fontSize: 12, letterSpacing: 0.3, color: colors.textLow },
   segmentTextOn: { color: colors.gold },
+
   progressTrack: {
     height: 5,
     borderRadius: 3,
@@ -278,12 +380,22 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: { height: 5, borderRadius: 3, overflow: 'hidden' },
-  likeIcon: { width: 70, textAlign: 'right' },
+
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: sp(3),
+    paddingHorizontal: sp(1),
+  },
+  ctrlSide: { width: 48, alignItems: 'center', justifyContent: 'center' },
+  speedText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.textLow },
+  speedTextOn: { color: colors.gold },
   playMain: { shadowColor: colors.glowSaffron, shadowOpacity: 0.7, shadowRadius: 16, elevation: 10 },
   playMainGrad: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     alignItems: 'center',
     justifyContent: 'center',
   },
