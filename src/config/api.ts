@@ -1,6 +1,6 @@
 // Backend base URL for the deity chat/voice service.
 //
-// - Web preview + desktop browser: http://localhost:8787 works directly.
-// - Physical device (Expo Go / dev client): localhost won't resolve — point this
-//   at your tunnel URL (e.g. an ngrok/loca.lt URL) or the deployed Render URL.
-export const API_BASE = 'http://localhost:8787';
+// Deployed on Render (free tier — note it cold-starts after ~15 min idle, so the
+// first request can take 30–60s). For local backend development, swap this to
+// 'http://localhost:8787' (works on web; on a device use a tunnel/LAN URL).
+export const API_BASE = 'https://sanatan-zp8m.onrender.com';
