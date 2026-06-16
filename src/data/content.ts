@@ -154,6 +154,8 @@ export const tracks: Track[] = [
       },
     ],
     audio: [
+      // Suno pilot: sung aarti (preferred once url is filled), then the instrumental bed.
+      { variant: 'traditional', url: '', ledgerId: 'lic-ai-jai-ganesh-vocal' },
       { variant: 'instrumental', url: '', ledgerId: 'lic-rf-ganesha-instrumental' },
     ],
   },
@@ -214,6 +216,8 @@ export const tracks: Track[] = [
       'Achyutam Keshavam Krishna Damodaram,\nRaam Naaraayanam Janaki Vallabham.',
       'Kaun kehte hai Bhagwan aate nahi,\nTum Meera ke jaise bulaate nahi.',
     ],
+    // Suno pilot: sung bhajan.
+    audio: [{ variant: 'traditional', url: '', ledgerId: 'lic-ai-achyutam-vocal' }],
   },
   {
     id: 'hare-krishna-mahamantra',

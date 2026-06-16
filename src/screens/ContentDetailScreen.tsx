@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  setAudioModeAsync,
+} from 'expo-audio';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -20,32 +25,41 @@ import { deityById, tracks } from '../data/content';
 import { deityImage } from '../data/assets';
 import type { RootScreenProps } from '../navigation/types';
 
-// NOTE: audio files aren't bundled per-track yet, so playback is simulated for the prototype.
-// Swap the timer for expo-audio's useAudioPlayer once track URLs exist.
+// Real audio playback via expo-audio. Tracks whose `audio[].url` is still empty
+// (catalog not yet sourced) render a tasteful "coming soon" player rather than
+// faking progress — the moment a CDN url is added, the player just works.
 export default function ContentDetailScreen({ route, navigation }: RootScreenProps<'ContentDetail'>) {
   const insets = useSafeAreaInsets();
   const track = tracks.find((t) => t.id === route.params.trackId) ?? tracks[0];
   const deity = deityById(track.deityId);
   const { scrollY, onScroll } = useParallaxScroll();
 
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0); // 0..1
+  // First audio variant that actually has a url (instrumental/chant/etc.).
+  const audioUrl = track.audio?.find((a) => a.url)?.url ?? null;
+  const hasAudio = !!audioUrl;
+
+  const player = useAudioPlayer(audioUrl ? { uri: audioUrl } : null, { updateInterval: 250 });
+  const status = useAudioPlayerStatus(player);
+
+  const [trackWidth, setTrackWidth] = useState(0);
   const progressSV = useSharedValue(0);
 
   useEffect(() => {
-    if (!playing) return;
-    const id = setInterval(() => {
-      setProgress((p) => {
-        const next = p + 0.004;
-        return next >= 1 ? 0 : next;
-      });
-    }, 100);
-    return () => clearInterval(id);
-  }, [playing]);
+    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: false }).catch(() => {});
+  }, []);
 
+  const duration = status.duration || dur(track.duration);
+  const progress = duration > 0 ? Math.min(status.currentTime / duration, 1) : 0;
+
+  // Smoothly interpolate the fill between the player's 250ms status ticks.
   useEffect(() => {
-    progressSV.value = withTiming(progress, { duration: 120 });
+    progressSV.value = withTiming(progress, { duration: 260 });
   }, [progress, progressSV]);
+
+  // Reset to the start once a track finishes so the next tap replays it.
+  useEffect(() => {
+    if (status.didJustFinish) player.seekTo(0);
+  }, [status.didJustFinish, player]);
 
   const fillStyle = useAnimatedStyle(() => ({ width: `${progressSV.value * 100}%` }));
 
@@ -57,6 +71,27 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
     ],
     opacity: interpolate(scrollY.value, [0, 260], [1, 0.15], { extrapolateRight: 'clamp' }),
   }));
+
+  const togglePlay = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!hasAudio) return;
+    if (status.playing) player.pause();
+    else player.play();
+  };
+
+  const skip = (seconds: number) => {
+    if (!hasAudio) return;
+    Haptics.selectionAsync();
+    const next = Math.max(0, Math.min(status.currentTime + seconds, duration));
+    player.seekTo(next);
+  };
+
+  const onSeek = (e: { nativeEvent: { locationX: number } }) => {
+    if (!hasAudio || trackWidth <= 0) return;
+    Haptics.selectionAsync();
+    const ratio = Math.max(0, Math.min(e.nativeEvent.locationX / trackWidth, 1));
+    player.seekTo(ratio * duration);
+  };
 
   return (
     <ScreenBackground>
@@ -101,48 +136,50 @@ export default function ContentDetailScreen({ route, navigation }: RootScreenPro
 
       {/* Frosted player bar */}
       <GlassCard blur intensity={50} style={[styles.player, { paddingBottom: insets.bottom + sp(3) }]} radius={radii.xl}>
-        <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressFill, fillStyle]}>
-            <LinearGradient
-              colors={['#F6C84C', '#FF7A1A']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
-        </View>
-        <View className="flex-row items-center justify-between mt-4">
-          <Text className="font-body text-[12px] text-textMid w-[70px]">
-            {fmt(progress * dur(track.duration))} / {track.duration}
-          </Text>
-          <View className="flex-row items-center gap-[22px]">
-            <Ionicons name="play-skip-back" size={22} color={colors.textMid} />
-            <PressableScale
-              haptic="medium"
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setPlaying((p) => !p);
-              }}
-              style={styles.playMain}
-            >
+        <Pressable onPress={onSeek} hitSlop={12} disabled={!hasAudio}>
+          <View style={styles.progressTrack} onLayout={(e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width)}>
+            <Animated.View style={[styles.progressFill, fillStyle]}>
               <LinearGradient
                 colors={['#F6C84C', '#FF7A1A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFill}
+              />
+            </Animated.View>
+          </View>
+        </Pressable>
+        <View className="flex-row items-center justify-between mt-4">
+          <Text className="font-body text-[12px] text-textMid w-[70px]">
+            {hasAudio ? `${fmt(status.currentTime)} / ${fmt(duration)}` : track.duration}
+          </Text>
+          <View className="flex-row items-center gap-[22px]">
+            <Pressable onPress={() => skip(-15)} hitSlop={10} disabled={!hasAudio}>
+              <Ionicons name="play-back" size={22} color={hasAudio ? colors.textMid : colors.textLow} />
+            </Pressable>
+            <PressableScale haptic="none" onPress={togglePlay} style={styles.playMain}>
+              <LinearGradient
+                colors={hasAudio ? ['#F6C84C', '#FF7A1A'] : ['#2A2A2E', '#1C1C1F']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.playMainGrad}
               >
                 <Ionicons
-                  name={playing ? 'pause' : 'play'}
+                  name={status.playing ? 'pause' : 'play'}
                   size={24}
-                  color="#3A1205"
-                  style={{ marginLeft: playing ? 0 : 2 }}
+                  color={hasAudio ? '#3A1205' : colors.textMid}
+                  style={{ marginLeft: status.playing ? 0 : 2 }}
                 />
               </LinearGradient>
             </PressableScale>
-            <Ionicons name="play-skip-forward" size={22} color={colors.textMid} />
+            <Pressable onPress={() => skip(15)} hitSlop={10} disabled={!hasAudio}>
+              <Ionicons name="play-forward" size={22} color={hasAudio ? colors.textMid : colors.textLow} />
+            </Pressable>
           </View>
           <Ionicons name="heart-outline" size={22} color={colors.textMid} style={styles.likeIcon} />
         </View>
+        {!hasAudio && (
+          <Text className="font-body text-[11px] text-textLow mt-3 text-center">Audio coming soon</Text>
+        )}
       </GlassCard>
     </ScreenBackground>
   );

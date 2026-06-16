@@ -67,6 +67,27 @@ export const ledger: LicenseEntry[] = [
     expiresOn: null,
     notes: 'PLACEHOLDER — confirm public-domain status of the specific recording.',
   },
+  // ── Suno Pro pilot batch (generate → QA pronunciation → host on R2 → fill url) ──
+  {
+    id: 'lic-ai-jai-ganesh-vocal',
+    asset: 'Jai Ganesh Deva — aarti (sung)',
+    source: 'Suno Pro',
+    licenseType: 'ai-generated',
+    attributionRequired: false,
+    allowedUse: { streaming: true, offline: true, redistribution: false },
+    expiresOn: null,
+    notes: 'PILOT — generated under paid (commercial) Suno; set acquiredOn + contractRef (Suno gen URL) once rendered + QA-passed.',
+  },
+  {
+    id: 'lic-ai-achyutam-vocal',
+    asset: 'Achyutam Keshavam — bhajan (sung)',
+    source: 'Suno Pro',
+    licenseType: 'ai-generated',
+    attributionRequired: false,
+    allowedUse: { streaming: true, offline: true, redistribution: false },
+    expiresOn: null,
+    notes: 'PILOT — generated under paid (commercial) Suno; set acquiredOn + contractRef (Suno gen URL) once rendered + QA-passed.',
+  },
 ];
 
 export const licenseFor = (id: string): LicenseEntry | undefined =>
