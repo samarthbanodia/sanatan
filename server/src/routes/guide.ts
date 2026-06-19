@@ -59,10 +59,17 @@ guideRouter.post('/guide/plan', async (req, res) => {
   try {
     const msg = await anthropic.messages.create({
       model: 'claude-haiku-4-5',
-      max_tokens: 1400,
+      // A full plan (8 ritual steps + Devanagari mantras + transliterations) is
+      // token-dense; 1400 truncated the JSON mid-output → parse failure. 4096
+      // leaves comfortable headroom for any home-pooja plan.
+      max_tokens: 4096,
       system: plannerSystemPrompt(language),
       messages: [{ role: 'user', content: ask }],
     });
+    // If the model still hit the cap, the JSON is truncated — say so clearly
+    // rather than the generic "try again".
+    if (msg.stop_reason === 'max_tokens')
+      return res.status(502).json({ error: 'plan was too long to complete — please narrow the request' });
     const plan = parsePlan(collectText(msg));
     if (!plan) return res.status(502).json({ error: 'could not build a plan — please try again' });
     return res.json({ plan });
