@@ -9,17 +9,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import ScreenBackground from '../components/ScreenBackground';
 import GlassCard from '../components/GlassCard';
+import DivineAura from '../components/DivineAura';
 import DivineOrb from '../components/DivineOrb';
+import DiyaFlame from '../components/DiyaFlame';
 import DeityArt from '../components/DeityArt';
 import AmbientToggle from '../components/AmbientToggle';
 import FadeIn from '../components/FadeIn';
 import PressableScale from '../components/PressableScale';
 import { TrackTile } from '../components/TrackCard';
 import { useParallaxScroll } from '../hooks/useParallaxScroll';
-import { colors, fill, gradients, radii, sp, type } from '../theme/theme';
+import { colors, fill, fonts, gradients, radii, sp, type } from '../theme/theme';
 import { deities, deityById, tracks } from '../data/content';
 import { deityImage } from '../data/assets';
 import { usePreferences } from '../state/preferences';
+import { useDiya } from '../state/useDiya';
+import { usePlayback } from '../state/playback';
 import type { RootStackParamList } from '../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -38,6 +42,13 @@ export default function DarshanScreen() {
   const nav = useNavigation<Nav>();
   const { scrollY, onScroll } = useParallaxScroll();
   const { prefs } = usePreferences();
+  const diya = useDiya();
+  const pb = usePlayback();
+
+  const openTrack = (t: (typeof tracks)[number]) => {
+    pb.play(t);
+    pb.expand();
+  };
 
   // Featured = the user's chosen guardian deity; falls back to a daily rotation.
   const featured =
@@ -60,6 +71,8 @@ export default function DarshanScreen() {
       {/* Parallax hero backdrop — the deity of the day */}
       <Animated.View style={[styles.hero, heroStyle]} pointerEvents="none">
         <Image source={deityImage(featured.id)} style={fill} resizeMode="cover" />
+        {/* GPU divine aura — breathing bloom (deity-tinted) + film grain */}
+        <DivineAura height={HERO_H} color={(featured.gradient?.[1] as string) ?? colors.saffron} />
         <LinearGradient
           colors={['rgba(0,0,0,0.35)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.85)', '#000000']}
           locations={[0, 0.35, 0.8, 1]}
@@ -121,12 +134,42 @@ export default function DarshanScreen() {
           </PressableScale>
         </FadeIn>
 
+        {/* Daily diya — light one lamp a day, keep the flame */}
+        <FadeIn delay={110} style={styles.section}>
+          <Text style={type.section}>DAILY DIYA</Text>
+          <GlassCard
+            style={styles.diyaCard}
+            onPress={() => {
+              if (!diya.litToday) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                diya.light();
+              }
+            }}
+          >
+            <DiyaFlame size={50} lit={diya.litToday} />
+            <View className="flex-1">
+              <Text className="font-bodyBold text-[17px] text-textHi">
+                {diya.litToday ? 'Diya lit today' : 'Light today’s diya'}
+              </Text>
+              <Text className="font-body text-[13px] text-textLow mt-0.5">
+                {diya.litToday ? 'Keep the flame glowing each day' : 'A small moment of devotion'}
+              </Text>
+            </View>
+            {diya.streak > 0 && (
+              <View style={styles.streakPill}>
+                <Ionicons name="flame" size={13} color={colors.saffron} />
+                <Text style={styles.streakNum}>{diya.streak}</Text>
+              </View>
+            )}
+          </GlassCard>
+        </FadeIn>
+
         {/* Daily aarti card */}
         <FadeIn delay={150} style={styles.section}>
           <Text style={type.section}>TODAY&apos;S AARTI</Text>
           <GlassCard
             style={styles.aartiCard}
-            onPress={() => nav.navigate('ContentDetail', { trackId: dailyAarti.id })}
+            onPress={() => openTrack(dailyAarti)}
           >
             <DeityArt source={deityImage(dailyAarti.deityId)} radius={radii.md} style={styles.aartiThumb} />
             <View className="flex-1">
@@ -151,7 +194,7 @@ export default function DarshanScreen() {
               <TrackTile
                 key={t.id}
                 track={t}
-                onPress={() => nav.navigate('ContentDetail', { trackId: t.id })}
+                onPress={() => openTrack(t)}
               />
             ))}
           </RNScrollView>
@@ -185,6 +228,30 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     backgroundColor: colors.bg2,
+  },
+  diyaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: sp(3),
+  },
+  streakPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+    backgroundColor: colors.glassStrong,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  streakNum: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 13,
+    color: colors.amber,
   },
   playCircle: {
     width: 42,

@@ -17,6 +17,7 @@ const ICONS: Record<string, { on: IconName; off: IconName }> = {
   Darshan: { on: 'flame', off: 'flame-outline' },
   Library: { on: 'musical-notes', off: 'musical-notes-outline' },
   Talk: { on: 'sparkles', off: 'sparkles-outline' },
+  Guide: { on: 'book', off: 'book-outline' },
 };
 
 const H_PAD = 8;

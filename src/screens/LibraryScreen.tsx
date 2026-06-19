@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import ScreenBackground from '../components/ScreenBackground';
@@ -10,16 +8,14 @@ import FadeIn from '../components/FadeIn';
 import { TrackRow } from '../components/TrackCard';
 import { colors, fonts, radii, sp, type } from '../theme/theme';
 import { ContentKind, kindLabels, tracksByKind } from '../data/content';
-import type { RootStackParamList } from '../navigation/types';
-
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+import { usePlayback } from '../state/playback';
 
 const TABS: ContentKind[] = ['aarti', 'bhajan', 'prayer'];
 const SEG_PAD = 4;
 
 export default function LibraryScreen() {
   const insets = useSafeAreaInsets();
-  const nav = useNavigation<Nav>();
+  const pb = usePlayback();
   const [active, setActive] = useState<ContentKind>('aarti');
   const [segWidth, setSegWidth] = useState(0);
 
@@ -83,7 +79,13 @@ export default function LibraryScreen() {
         <View style={styles.list}>
           {list.map((t, i) => (
             <FadeIn key={`${active}-${t.id}`} delay={i * 45} rise={10}>
-              <TrackRow track={t} onPress={() => nav.navigate('ContentDetail', { trackId: t.id })} />
+              <TrackRow
+                track={t}
+                onPress={() => {
+                  pb.play(t);
+                  pb.expand();
+                }}
+              />
               {i < list.length - 1 && <View style={styles.divider} />}
             </FadeIn>
           ))}

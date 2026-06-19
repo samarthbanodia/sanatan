@@ -7,7 +7,7 @@
 export type DeityId = 'ganesha' | 'krishna' | 'shiva' | 'durga' | 'hanuman' | 'lakshmi';
 export type Language = 'hi' | 'en' | 'ta' | 'te' | 'bn' | 'mr';
 
-const LANGUAGE_NAMES: Record<Language, string> = {
+export const LANGUAGE_NAMES: Record<Language, string> = {
   hi: 'Hindi',
   en: 'English',
   ta: 'Tamil',

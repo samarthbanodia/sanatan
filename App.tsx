@@ -27,10 +27,12 @@ import type { RootStackParamList } from './src/navigation/types';
 import DarshanScreen from './src/screens/DarshanScreen';
 import LibraryScreen from './src/screens/LibraryScreen';
 import TalkScreen from './src/screens/TalkScreen';
-import ContentDetailScreen from './src/screens/ContentDetailScreen';
+import GuideScreen from './src/screens/GuideScreen';
 import ConversationScreen from './src/screens/ConversationScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import GlobalPlayer from './src/components/GlobalPlayer';
 import { PreferencesProvider, usePreferences } from './src/state/preferences';
+import { PlaybackProvider } from './src/state/playback';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -44,6 +46,7 @@ function Tabs() {
       <Tab.Screen name="Darshan" component={DarshanScreen} />
       <Tab.Screen name="Library" component={LibraryScreen} />
       <Tab.Screen name="Talk" component={TalkScreen} />
+      <Tab.Screen name="Guide" component={GuideScreen} />
     </Tab.Navigator>
   );
 }
@@ -79,11 +82,6 @@ function Root() {
       >
         <Stack.Screen name="Tabs" component={Tabs} />
         <Stack.Screen
-          name="ContentDetail"
-          component={ContentDetailScreen}
-          options={{ animation: 'slide_from_bottom' }}
-        />
-        <Stack.Screen
           name="Conversation"
           component={ConversationScreen}
           options={{ animation: 'fade', animationDuration: 320 }}
@@ -112,7 +110,10 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <PreferencesProvider>
-          <Root />
+          <PlaybackProvider>
+            <Root />
+            <GlobalPlayer />
+          </PlaybackProvider>
         </PreferencesProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

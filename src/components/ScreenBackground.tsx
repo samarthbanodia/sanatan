@@ -3,6 +3,7 @@ import { Animated, Easing, Image, StyleSheet, View, ViewStyle } from 'react-nati
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fill, gradients } from '../theme/theme';
 import { bgSanctuary } from '../data/assets';
+import FilmGrain from './FilmGrain';
 
 // A near-black sanctuary canvas. A single faint warm glow breathes slowly near the top —
 // the only light in the room. Restraint over decoration (Opal-style).
@@ -57,6 +58,8 @@ export default function ScreenBackground({
       <Animated.View style={[styles.glow, glow]}>
         <LinearGradient colors={[colors.saffron, 'transparent']} style={styles.glowFill} />
       </Animated.View>
+      {/* App-wide film grain — over the canvas, under content (keeps text crisp) */}
+      <FilmGrain />
       {children}
     </View>
   );
