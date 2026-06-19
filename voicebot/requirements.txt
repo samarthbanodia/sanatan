@@ -1,7 +1,7 @@
 # Sanatan voice bot — Pipecat cascaded pipeline (Sarvam STT + Anthropic Haiku + Sarvam TTS).
-# After the first successful `pip install` + smoke test, PIN pipecat-ai to the exact
-# version that worked (a few import paths move between releases).
-pipecat-ai[anthropic,sarvam,silero,websocket]>=0.0.60
+# Pinned to 1.4.0 — bot.py is written against that version's API (universal LLMContext,
+# pipecat.transports.websocket.fastapi, Sarvam STT/TTS services). Bump deliberately.
+pipecat-ai[anthropic,sarvam,silero,websocket]==1.4.0
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-dotenv>=1.0
